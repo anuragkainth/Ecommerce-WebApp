@@ -344,48 +344,57 @@ def customer_home_view(request):
 
 # shipment address before placing order
 @login_required(login_url='customerlogin')
+def get_product_ids_from_cookies(request):
+    """Retrieve product IDs from cookies."""
+    return request.COOKIES.get('product_ids', '')
+
+def product_in_cart(request):
+    """Check if there is any product in the cart."""
+    product_ids = get_product_ids_from_cookies(request)
+    return bool(product_ids)
+
+def get_product_count(request):
+    """Return the number of unique products in the cart."""
+    product_ids = get_product_ids_from_cookies(request)
+    return len(set(product_ids.split('|'))) if product_ids else 0
+
+def calculate_total_price(product_ids):
+    """Calculate the total price of products in the cart."""
+    products = models.Product.objects.filter(id__in=product_ids)
+    return sum(product.price for product in products)
+
+def handle_address_form_submission(request, address_form):
+    """Handle form submission and set cookies for payment."""
+    email = address_form.cleaned_data['Email']
+    mobile = address_form.cleaned_data['Mobile']
+    address = address_form.cleaned_data['Address']
+    
+    product_ids = get_product_ids_from_cookies(request).split('|')
+    total = calculate_total_price(product_ids)
+
+    response = render(request, 'ecom/payment.html', {'total': total})
+    response.set_cookie('email', email)
+    response.set_cookie('mobile', mobile)
+    response.set_cookie('address', address)
+    return response
+
 def customer_address_view(request):
-    # this is for checking whether product is present in cart or not
-    # if there is no product in cart we will not show address form
-    product_in_cart=False
-    if 'product_ids' in request.COOKIES:
-        product_ids = request.COOKIES['product_ids']
-        if product_ids != "":
-            product_in_cart=True
-    #for counter in cart
-    if 'product_ids' in request.COOKIES:
-        product_ids = request.COOKIES['product_ids']
-        counter=product_ids.split('|')
-        product_count_in_cart=len(set(counter))
-    else:
-        product_count_in_cart=0
+    """Handle the customer address form and payment process."""
+    product_ids = get_product_ids_from_cookies(request)
+    product_count_in_cart = get_product_count(request)
+    product_in_cart_flag = product_in_cart(request)
 
-    addressForm = forms.AddressForm()
+    address_form = forms.AddressForm()
     if request.method == 'POST':
-        addressForm = forms.AddressForm(request.POST)
-        if addressForm.is_valid():
-            # here we are taking address, email, mobile at time of order placement
-            # we are not taking it from customer account table because
-            # these thing can be changes
-            email = addressForm.cleaned_data['Email']
-            mobile=addressForm.cleaned_data['Mobile']
-            address = addressForm.cleaned_data['Address']
-            #for showing total price on payment page.....accessing id from cookies then fetching  price of product from db
-            total=0
-            if 'product_ids' in request.COOKIES:
-                product_ids = request.COOKIES['product_ids']
-                if product_ids != "":
-                    product_id_in_cart=product_ids.split('|')
-                    products=models.Product.objects.all().filter(id__in = product_id_in_cart)
-                    for p in products:
-                        total=total+p.price
+        address_form = forms.AddressForm(request.POST)
+        if address_form.is_valid():
+            return handle_address_form_submission(request, address_form)
 
-            response = render(request, 'ecom/payment.html',{'total':total})
-            response.set_cookie('email',email)
-            response.set_cookie('mobile',mobile)
-            response.set_cookie('address',address)
-            return response
-    return render(request,'ecom/customer_address.html',{'addressForm':addressForm,'product_in_cart':product_in_cart,'product_count_in_cart':product_count_in_cart})
+    return render(request, 'ecom/customer_address.html', {
+        'addressForm': address_form,
+        'product_in_cart': product_in_cart_flag,
+        'product_count_in_cart': product_count_in_cart
+    })
 
 
 
