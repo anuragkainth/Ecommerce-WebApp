@@ -7,17 +7,25 @@ from django.contrib.auth.decorators import login_required,user_passes_test
 from django.contrib import messages
 from django.conf import settings
 
+def get_product_count_in_cart(request):
+    """Helper function to get the count of unique products in the cart from cookies."""
+    product_ids = request.COOKIES.get('product_ids', '')
+    if product_ids:
+        return len(set(product_ids.split('|')))
+    return 0
+
 def home_view(request):
-    products=models.Product.objects.all()
-    if 'product_ids' in request.COOKIES:
-        product_ids = request.COOKIES['product_ids']
-        counter=product_ids.split('|')
-        product_count_in_cart=len(set(counter))
-    else:
-        product_count_in_cart=0
+    """Handle the home page view and cart count."""
+    products = models.Product.objects.all()
+    product_count_in_cart = get_product_count_in_cart(request)
+
     if request.user.is_authenticated:
         return HttpResponseRedirect('afterlogin')
-    return render(request,'ecom/index.html',{'products':products,'product_count_in_cart':product_count_in_cart})
+    
+    return render(request, 'ecom/index.html', {
+        'products': products,
+        'product_count_in_cart': product_count_in_cart
+    })
     
 
 
@@ -106,22 +114,28 @@ def delete_customer_view(request,pk):
 
 
 @login_required(login_url='adminlogin')
-def update_customer_view(request,pk):
-    customer=models.Customer.objects.get(id=pk)
-    user=models.User.objects.get(id=customer.user_id)
-    userForm=forms.CustomerUserForm(instance=user)
-    customerForm=forms.CustomerForm(request.FILES,instance=customer)
-    mydict={'userForm':userForm,'customerForm':customerForm}
-    if request.method=='POST':
-        userForm=forms.CustomerUserForm(request.POST,instance=user)
-        customerForm=forms.CustomerForm(request.POST,instance=customer)
-        if userForm.is_valid() and customerForm.is_valid():
-            user=userForm.save()
-            user.set_password(user.password)
+def update_customer_view(request, pk):
+    """Handle the update of a customer's profile by the admin."""
+    customer = models.Customer.objects.get(id=pk)
+    user = customer.user  # Access the related user directly from the customer instance
+
+    if request.method == 'POST':
+        user_form = forms.CustomerUserForm(request.POST, instance=user)
+        customer_form = forms.CustomerForm(request.POST, request.FILES, instance=customer)
+        
+        if user_form.is_valid() and customer_form.is_valid():
+            user = user_form.save(commit=False)
+            user.set_password(user.password)  # Ensure password remains hashed
             user.save()
-            customerForm.save()
+            customer_form.save()
             return redirect('view-customer')
-    return render(request,'ecom/admin_update_customer.html',context=mydict)
+    else:
+        user_form = forms.CustomerUserForm(instance=user)
+        customer_form = forms.CustomerForm(instance=customer)
+
+    context = {'userForm': user_form, 'customerForm': customer_form}
+    return render(request, 'ecom/admin_update_customer.html', context=context)
+
 
 # admin view the product
 @login_required(login_url='adminlogin')
@@ -342,15 +356,22 @@ def send_feedback_view(request):
 #---------------------------------------------------------------------------------
 @login_required(login_url='customerlogin')
 @user_passes_test(is_customer)
+def get_product_count_in_cart(request):
+    """Helper function to get the count of unique products in the cart from cookies."""
+    product_ids = request.COOKIES.get('product_ids', '')
+    if product_ids:
+        return len(set(product_ids.split('|')))
+    return 0
+
 def customer_home_view(request):
-    products=models.Product.objects.all()
-    if 'product_ids' in request.COOKIES:
-        product_ids = request.COOKIES['product_ids']
-        counter=product_ids.split('|')
-        product_count_in_cart=len(set(counter))
-    else:
-        product_count_in_cart=0
-    return render(request,'ecom/customer_home.html',{'products':products,'product_count_in_cart':product_count_in_cart})
+    """Render the customer home view with the product list and cart count."""
+    products = models.Product.objects.all()
+    product_count_in_cart = get_product_count_in_cart(request)
+
+    return render(request, 'ecom/customer_home.html', {
+        'products': products,
+        'product_count_in_cart': product_count_in_cart
+    })
 
 
 
@@ -542,21 +563,27 @@ def my_profile_view(request):
 @login_required(login_url='customerlogin')
 @user_passes_test(is_customer)
 def edit_profile_view(request):
-    customer=models.Customer.objects.get(user_id=request.user.id)
-    user=models.User.objects.get(id=customer.user_id)
-    userForm=forms.CustomerUserForm(instance=user)
-    customerForm=forms.CustomerForm(request.FILES,instance=customer)
-    mydict={'userForm':userForm,'customerForm':customerForm}
-    if request.method=='POST':
-        userForm=forms.CustomerUserForm(request.POST,instance=user)
-        customerForm=forms.CustomerForm(request.POST,instance=customer)
-        if userForm.is_valid() and customerForm.is_valid():
-            user=userForm.save()
-            user.set_password(user.password)
+    """Handle editing of user and customer profiles."""
+    customer = models.Customer.objects.get(user_id=request.user.id)
+    user = customer.user  # Accessing the related user directly from the customer instance
+
+    if request.method == 'POST':
+        user_form = forms.CustomerUserForm(request.POST, instance=user)
+        customer_form = forms.CustomerForm(request.POST, request.FILES, instance=customer)
+        
+        if user_form.is_valid() and customer_form.is_valid():
+            user = user_form.save(commit=False)
+            user.set_password(user.password)  # Ensures password remains hashed
             user.save()
-            customerForm.save()
+            customer_form.save()
             return HttpResponseRedirect('my-profile')
-    return render(request,'ecom/edit_profile.html',context=mydict)
+    else:
+        user_form = forms.CustomerUserForm(instance=user)
+        customer_form = forms.CustomerForm(instance=customer)
+
+    context = {'userForm': user_form, 'customerForm': customer_form}
+    return render(request, 'ecom/edit_profile.html', context=context)
+
 
 
 
