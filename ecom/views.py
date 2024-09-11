@@ -280,39 +280,51 @@ def cart_view(request):
     return render(request,'ecom/cart.html',{'products':products,'total':total,'product_count_in_cart':product_count_in_cart})
 
 
-def remove_from_cart_view(request,pk):
-    #for counter in cart
-    if 'product_ids' in request.COOKIES:
-        product_ids = request.COOKIES['product_ids']
-        counter=product_ids.split('|')
-        product_count_in_cart=len(set(counter))
+def get_product_ids_from_cookies(request):
+    """Retrieve product IDs from cookies."""
+    return request.COOKIES.get('product_ids', '').split('|')
+
+def get_total_price(products):
+    """Calculate the total price of products in the cart."""
+    return sum(product.price for product in products)
+
+def update_cart_cookie(response, product_ids):
+    """Update the product_ids cookie with the current cart state."""
+    if product_ids:
+        response.set_cookie('product_ids', '|'.join(product_ids))
     else:
-        product_count_in_cart=0
+        response.delete_cookie('product_ids')
 
-    # removing product id from cookie
-    total=0
-    if 'product_ids' in request.COOKIES:
-        product_ids = request.COOKIES['product_ids']
-        product_id_in_cart=product_ids.split('|')
-        product_id_in_cart=list(set(product_id_in_cart))
-        product_id_in_cart.remove(str(pk))
-        products=models.Product.objects.all().filter(id__in = product_id_in_cart)
-        #for total price shown in cart after removing product
-        for p in products:
-            total=total+p.price
+def remove_product_from_cart(product_ids, product_id_to_remove):
+    """Remove a product from the cart, if it exists."""
+    product_ids = list(set(product_ids))  # Ensure uniqueness
+    if str(product_id_to_remove) in product_ids:
+        product_ids.remove(str(product_id_to_remove))
+    return product_ids
 
-        #  for update coookie value after removing product id in cart
-        value=""
-        for i in range(len(product_id_in_cart)):
-            if i==0:
-                value=value+product_id_in_cart[0]
-            else:
-                value=value+"|"+product_id_in_cart[i]
-        response = render(request, 'ecom/cart.html',{'products':products,'total':total,'product_count_in_cart':product_count_in_cart})
-        if value=="":
-            response.delete_cookie('product_ids')
-        response.set_cookie('product_ids',value)
-        return response
+def remove_from_cart_view(request, pk):
+    """Handle the removal of a product from the cart."""
+    product_ids = get_product_ids_from_cookies(request)
+    product_count_in_cart = len(set(product_ids))
+
+    # Remove the product from the cart
+    updated_product_ids = remove_product_from_cart(product_ids, pk)
+    
+    # Fetch remaining products after removal
+    products = models.Product.objects.filter(id__in=updated_product_ids)
+    total = get_total_price(products)
+
+    # Prepare the response
+    response = render(request, 'ecom/cart.html', {
+        'products': products,
+        'total': total,
+        'product_count_in_cart': product_count_in_cart
+    })
+    
+    # Update the product_ids cookie
+    update_cart_cookie(response, updated_product_ids)
+
+    return response
 
 
 def send_feedback_view(request):
